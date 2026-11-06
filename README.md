@@ -74,13 +74,20 @@ H2A_URL=… H2A_TOKEN=… h2a-bot -state                                        
 H2A_URL=… H2A_TOKEN=… h2a-bot -wake lead                                       # wake the lead
 H2A_URL=… H2A_TOKEN=… h2a-bot -sleep lead                                      # put it to sleep again
 H2A_URL=… H2A_TOKEN=… h2a-bot -to role:11 -item "Scene 2" -text "Look at it"   # an item (no -text: stdin)
-echo "Look at it" | H2A_URL=… H2A_TOKEN=… h2a-bot -item "Scene 2"              # an item to the lead
+echo "Look at it" | H2A_URL=… H2A_TOKEN=… h2a-bot -item "Scene 2"              # an item to the lead (a pass of one project)
 ```
 
 It prints `[role · project] text` for each answer, keeps the last seq in
 `~/.h2a-bot.seq`, and survives disconnects; Ctrl+C loses nothing. States
 and refusals are said in plain words, with the code after them; control
 characters of the node's text are dropped before the terminal shows it.
+
+A pass of several projects addresses a lead as `lead:<project id>` (the
+welcome lists them): `-wake`, `-sleep` and `-item` need it there, and
+`-item` without `-to` says which leads to choose from. A pass keeps one
+connection: a second run with the same pass replaces the first (a running
+`-listen` stops with «another copy … signed in»), so give one command at a
+time, or run your commands inside the program that listens.
 
 ## Documentation
 

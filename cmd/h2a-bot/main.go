@@ -166,8 +166,9 @@ func control(ctx context.Context, c *h2a.Client, state bool, wake, sleepTo, item
 		fmt.Println("goes to sleep after its turn:", clean(sleepTo))
 	}
 	if item != "" {
-		if to == "" {
-			to = "lead"
+		var err error
+		if to, err = itemTarget(c.Welcome(), to); err != nil {
+			return err
 		}
 		if text == "" {
 			if st, err := os.Stdin.Stat(); err == nil && st.Mode()&os.ModeCharDevice == 0 {
@@ -266,4 +267,25 @@ func clean(s string) string {
 func isCode(err error, code string) bool {
 	var e *h2a.Error
 	return errors.As(err, &e) && e.Code == code
+}
+
+// itemTarget is the address an item goes to: -to, else the lead of a pass's
+// one project. A pass of several projects has no default lead (the node
+// refuses a bare «lead» there): the flag error lists the leads to choose.
+func itemTarget(w h2a.Welcome, to string) (string, error) {
+	if to != "" {
+		return to, nil
+	}
+	if len(w.Projects) <= 1 {
+		return "lead", nil
+	}
+	var leads []string
+	for _, p := range w.Projects {
+		for _, a := range p.To {
+			if strings.HasPrefix(a.Address, "lead:") {
+				leads = append(leads, a.Address+" ("+clean(p.Project)+")")
+			}
+		}
+	}
+	return "", fmt.Errorf("-item: this pass opens %d projects, give -to: %s", len(w.Projects), strings.Join(leads, ", "))
 }
