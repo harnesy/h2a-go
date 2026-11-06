@@ -1,4 +1,4 @@
-from harnsy e5dea67d5, contract "1"
+from harnsy d6a60b88b, contract "1"
 {
   "contract": "1",
   "codes": [
@@ -94,6 +94,26 @@ from harnsy e5dea67d5, contract "1"
       "code": "h2a_daily",
       "on": "frame",
       "client": "caller"
+    },
+    {
+      "code": "h2a_forbidden",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_not_yours",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_no_wake",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_soft_stop",
+      "on": "frame",
+      "client": "wait until"
     },
     {
       "on": "close",

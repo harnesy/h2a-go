@@ -40,11 +40,26 @@ type fakeNode struct {
 	// a welcome), and a hook on each message frame.
 	refuse    []func(c *websocket.Conn) bool                            // true: the connection was refused
 	onMessage func(n *fakeNode, c *websocket.Conn, m messageFrame) bool // true: handled
+	onControl func(n *fakeNode, c *websocket.Conn, m controlFrame) bool // true: handled
 	textBytes int
+	controls  []controlFrame // the state, wake, sleep and item frames, in order
+	done      map[string]int // wakes, sleeps and items done, by id
 }
 
+// controlFrame is a service's state, wake, sleep or item frame as the fake
+// node reads it.
+type controlFrame struct {
+	Type, ID, To, Project, Mode, Title, Text string
+}
+
+// fakeState is the fake node's posts.
+var fakeState = []ProjectState{{Project: "App", Posts: []Post{
+	{Address: "lead", Name: "Project lead", State: PostAsleep, Counts: Counts{Seats: 1, Asleep: 1}},
+	{Address: "role:11", Name: "Editor", State: PostUp, Counts: Counts{Seats: 1, Idle: 1}},
+}}}
+
 func newFakeNode(t *testing.T) *fakeNode {
-	n := &fakeNode{t: t, delivered: map[string]int{}, conv: map[string]string{}, textBytes: 16384}
+	n := &fakeNode{t: t, delivered: map[string]int{}, conv: map[string]string{}, done: map[string]int{}, textBytes: 16384}
 	n.srv = httptest.NewServer(http.HandlerFunc(n.serve))
 	t.Cleanup(n.srv.Close)
 	return n
@@ -93,10 +108,16 @@ func (n *fakeNode) serve(w http.ResponseWriter, r *http.Request) {
 		n.closeWith(c, CodeAuth, 4401)
 		return
 	}
-	n.send(c, map[string]any{"type": "welcome", "v": "1", "project": "App",
-		"to":     []Address{{Address: "lead", Name: "Project lead"}, {Address: "role:11", Name: "Editor"}},
-		"limits": map[string]int{"text_bytes": n.textBytes, "ping_seconds": 20, "idle_seconds": 60}})
-	n.mu.Lock()
+	to := []Address{{Address: "lead", Name: "Project lead"}, {Address: "role:11", Name: "Editor"}}
+	welcome := map[string]any{"type": "welcome", "v": "1", "project": "App", "to": to,
+		"limits": map[string]int{"text_bytes": n.textBytes, "ping_seconds": 20, "idle_seconds": 60}}
+	for _, v := range h.Can {
+		if v == "state" || v == "wake" || v == "item" {
+			welcome["projects"] = []ProjectAccess{{Project: "App", Rights: []string{RightTalk, RightRead, RightWake, RightItems}, To: to}}
+		}
+	}
+	n.mu.Lock() // the welcome and live together: a reply comes after the welcome, or is queued and resent here
+	n.send(c, welcome)
 	n.live = c
 	var resend []Reply
 	for _, m := range n.queue {
@@ -141,7 +162,45 @@ func (n *fakeNode) serve(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			n.accept(c, m)
+		case "state", "wake", "sleep", "item":
+			var m controlFrame
+			json.Unmarshal(b, &m)
+			n.mu.Lock()
+			n.controls = append(n.controls, m)
+			hook := n.onControl
+			n.mu.Unlock()
+			if hook != nil && hook(n, c, m) {
+				continue
+			}
+			n.control(c, m)
 		}
+	}
+}
+
+// control answers a state request, and does a wake, sleep or item once per
+// id (a repeated id gets the same answer).
+func (n *fakeNode) control(c *websocket.Conn, m controlFrame) {
+	if m.Type == "state" {
+		n.send(c, map[string]any{"type": "state", "re": m.ID, "projects": fakeState})
+		return
+	}
+	n.mu.Lock()
+	n.done[m.ID] = 1
+	n.mu.Unlock()
+	acc := map[string]any{"type": "accepted", "re": m.ID}
+	if m.Type == "item" {
+		acc["item"] = 42
+	}
+	n.send(c, acc)
+}
+
+// event sends a state event on the live connection.
+func (n *fakeNode) event(s []ProjectState) {
+	n.mu.Lock()
+	c := n.live
+	n.mu.Unlock()
+	if c != nil {
+		n.send(c, map[string]any{"type": "state", "projects": s})
 	}
 }
 

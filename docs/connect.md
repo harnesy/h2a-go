@@ -4,7 +4,7 @@
 c, err := h2a.Dial(ctx, h2a.Config{
 	URL:    "wss://node.example/h2a/v1", // the node's gateway
 	Token:  os.Getenv("H2A_TOKEN"),      // the pass's token
-	Can:    []string{"text"},            // the default
+	Can:    []string{"text"},            // the default; control: "state", "wake", "item"
 	Cursor: h2a.FileCursor("h2a.seq"),   // where the last handled seq is kept
 	Logf:   log.Printf,                  // optional: a line on each (re)connect
 })
@@ -15,7 +15,10 @@ c, err := h2a.Dial(ctx, h2a.Config{
   node's answer (15 s).
 - A `welcome`: `Dial` returns the client. `c.Welcome()` has the project, the
   pass's addresses (`To`: `lead`, `role:<id>`, each with its name) and the
-  node's limits.
+  node's limits. With `state`, `wake` or `item` in `Can`, also `Projects`:
+  every project of the pass with its rights (`talk`, `read`, `wake`,
+  `items`) and posts ([Control](control.md)). `"text"` is always sent: the
+  node takes no hello without it.
 - An `error`: `Dial` returns it as `*h2a.Error` — `Code` is the contract's
   (`h2a_auth`: the token is wrong or revoked; `h2a_off`: the pass is off or
   harnsy Max ended; `h2a_rate`: too many failed hellos, `RetryAfter`).

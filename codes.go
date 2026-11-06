@@ -22,6 +22,10 @@ const (
 	CodeConversationUnknown = "h2a_conversation_unknown"
 	CodeNoHolder            = "h2a_no_holder"
 	CodeDaily               = "h2a_daily"
+	CodeForbidden           = "h2a_forbidden"
+	CodeNotYours            = "h2a_not_yours"
+	CodeNoWake              = "h2a_no_wake"
+	CodeSoftStop            = "h2a_soft_stop"
 )
 
 // What a service does (the contract's «Client» column).
@@ -30,6 +34,7 @@ const (
 	MoveStop      = "stop"
 	MoveWait      = "wait retry_after"
 	MoveCaller    = "caller"
+	MoveWaitUntil = "wait until"
 )
 
 // Where a code comes.
@@ -67,6 +72,10 @@ var rules = []rule{
 	{CodeNoHolder, onFrame, 0, MoveCaller},
 	{CodeRate, onFrame, 0, MoveWait},
 	{CodeDaily, onFrame, 0, MoveCaller},
+	{CodeForbidden, onFrame, 0, MoveCaller},
+	{CodeNotYours, onFrame, 0, MoveCaller},
+	{CodeNoWake, onFrame, 0, MoveCaller},
+	{CodeSoftStop, onFrame, 0, MoveWaitUntil},
 	{"", onClose, 1006, MoveReconnect},
 	{"", onClose, 1009, MoveReconnect},
 }

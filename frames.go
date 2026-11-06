@@ -46,7 +46,29 @@ type Welcome struct {
 	Project string    `json:"project"`
 	To      []Address `json:"to"`
 	Limits  Limits    `json:"limits"`
+	// Projects are every project of the pass with its rights and posts;
+	// the node sends them only to a service whose Can names "state",
+	// "wake" or "item".
+	Projects []ProjectAccess `json:"projects,omitempty"`
 }
+
+// ProjectAccess is one project of the pass: its name, the rights the pass
+// has there (RightTalk, RightRead, RightWake, RightItems), and the
+// addresses of its posts (lead:<project id> on a pass of several
+// projects).
+type ProjectAccess struct {
+	Project string    `json:"project"`
+	Rights  []string  `json:"rights"`
+	To      []Address `json:"to"`
+}
+
+// The rights of a pass in a project (welcome.projects[].rights).
+const (
+	RightTalk  = "talk"  // Send
+	RightRead  = "read"  // State, OnState
+	RightWake  = "wake"  // Wake, Sleep
+	RightItems = "items" // CreateItem
+)
 
 // Message is a task or a reply the service sends. Without Conversation it
 // starts a new conversation to To; with one it writes into it.
@@ -118,6 +140,8 @@ type frame struct {
 	V            string          `json:"v,omitempty"`
 	Project      string          `json:"project,omitempty"`
 	To           json.RawMessage `json:"to,omitempty"`
+	Projects     json.RawMessage `json:"projects,omitempty"`
+	Item         int64           `json:"item,omitempty"`
 	Limits       *Limits         `json:"limits,omitempty"`
 	Re           string          `json:"re,omitempty"`
 	Conversation string          `json:"conversation,omitempty"`

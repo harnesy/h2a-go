@@ -1,4 +1,4 @@
-from harnsy e5dea67d5, contract "1"
+from harnsy d6a60b88b, contract "1"
 [
   {
     "dir": "service",
@@ -7,7 +7,10 @@ from harnsy e5dea67d5, contract "1"
       "v": "1",
       "token": "h2a_TOKEN",
       "can": [
-        "text"
+        "text",
+        "state",
+        "wake",
+        "item"
       ]
     }
   },
@@ -25,6 +28,27 @@ from harnsy e5dea67d5, contract "1"
         {
           "address": "role:11",
           "name": "Editor"
+        }
+      ],
+      "projects": [
+        {
+          "project": "App",
+          "rights": [
+            "talk",
+            "read",
+            "wake",
+            "items"
+          ],
+          "to": [
+            {
+              "address": "lead",
+              "name": "Project lead"
+            },
+            {
+              "address": "role:11",
+              "name": "Editor"
+            }
+          ]
         }
       ],
       "limits": {
@@ -179,6 +203,122 @@ from harnsy e5dea67d5, contract "1"
       "type": "accepted",
       "re": "m-1",
       "conversation": "C"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "state",
+      "id": "s-1"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "state",
+      "re": "s-1",
+      "projects": [
+        {
+          "project": "App",
+          "posts": [
+            {
+              "address": "lead",
+              "name": "Project lead",
+              "state": "asleep",
+              "counts": {
+                "seats": 1,
+                "working": 0,
+                "waiting": 0,
+                "starting": 0,
+                "idle": 0,
+                "asleep": 1,
+                "off": 0,
+                "vacant": 0
+              }
+            },
+            {
+              "address": "role:11",
+              "name": "Editor",
+              "state": "up",
+              "counts": {
+                "seats": 1,
+                "working": 0,
+                "waiting": 0,
+                "starting": 0,
+                "idle": 1,
+                "asleep": 0,
+                "off": 0,
+                "vacant": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "wake",
+      "id": "w-1",
+      "to": "lead"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "accepted",
+      "re": "w-1"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "sleep",
+      "id": "z-1",
+      "to": "lead"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "accepted",
+      "re": "z-1"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "sleep",
+      "id": "z-2",
+      "to": "role:11"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "error",
+      "re": "z-2",
+      "code": "h2a_not_yours",
+      "text": "this pass did not wake the holder: it may put to sleep only whom it woke"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "item",
+      "id": "i-1",
+      "to": "role:11",
+      "title": "Scene 2",
+      "text": "Look at scene 2"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "accepted",
+      "re": "i-1",
+      "item": 42
     }
   }
 ]

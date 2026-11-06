@@ -24,7 +24,9 @@ type Config struct {
 	// Token is the pass's token (h2a_…): a secret. It goes in the hello
 	// frame only, never in the URL, a header or a log of this package.
 	Token string
-	// Can is what the service takes; nil: ["text"].
+	// Can is what the service takes and sends: "text" (always sent, also
+	// when not listed), and by need "state" (State, OnState), "wake" (Wake
+	// and Sleep), "item" (CreateItem). nil: ["text"].
 	Can []string
 	// Cursor keeps the last handled seq; nil: MemCursor.
 	Cursor Cursor
@@ -54,6 +56,8 @@ type Client struct {
 	delivered int64 // the highest seq put on replies
 
 	replies chan Reply
+	states  chan State // the node's state events, for the OnState handler
+	onState func(State)
 	errs    chan *Error
 	redo    *Reply // a reply whose handler failed: the next Run gets it first
 	running atomic.Bool
@@ -61,8 +65,8 @@ type Client struct {
 
 type pending struct {
 	frame []byte
-	res   chan error // nil: accepted
-	acc   Accepted
+	res   chan error // nil: answered
+	ans   frame      // the node's answer: accepted, or state with re
 }
 
 // readTimeout: no frame for this long (the node pings every 20 s) is a dead
@@ -83,9 +87,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	if err := checkURL(cfg.URL); err != nil {
 		return nil, err
 	}
-	if cfg.Can == nil {
-		cfg.Can = []string{"text"}
-	}
+	cfg.Can = withText(cfg.Can)
 	if cfg.Cursor == nil {
 		cfg.Cursor = MemCursor()
 	}
@@ -93,7 +95,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 		cfg.Logf = func(string, ...any) {}
 	}
 	c := &Client{cfg: cfg, done: make(chan struct{}), live: make(chan struct{}),
-		pending: map[string]*pending{}, replies: make(chan Reply, 64), errs: make(chan *Error, 16)}
+		pending: map[string]*pending{}, replies: make(chan Reply, 64), states: make(chan State, 16), errs: make(chan *Error, 16)}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	conn, w, err := c.connect(ctx)
 	if err != nil {
@@ -102,7 +104,19 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	}
 	c.signedIn(conn, w)
 	go c.loop(conn)
+	go c.dispatchStates()
 	return c, nil
+}
+
+// withText is can with "text" first when it lacks it: the node refuses a
+// hello without it.
+func withText(can []string) []string {
+	for _, v := range can {
+		if v == "text" {
+			return can
+		}
+	}
+	return append([]string{"text"}, can...)
 }
 
 // Welcome is the node's welcome of the current connection.
@@ -137,26 +151,53 @@ func (c *Client) Send(ctx context.Context, m Message) (Accepted, error) {
 		return Accepted{}, &Error{Re: m.ID, Code: CodeTooBig, Text: fmt.Sprintf("text of %d bytes, the node takes %d", len(m.Text), lim)}
 	}
 	b, _ := json.Marshal(messageFrame{Type: "message", ID: m.ID, To: m.To, Conversation: m.Conversation, Parts: []textPart{{m.Text}}})
+	f, err := c.request(ctx, m.ID, b)
+	if err != nil {
+		return Accepted{}, err
+	}
+	return Accepted{ID: f.Re, Conversation: f.Conversation}, nil
+}
+
+// request sends a frame with its id and waits for the node's answer with
+// that re. A refusal is *Error, done as the contract's «Client» column
+// says: «wait retry_after» (h2a_rate) and «wait until» (h2a_soft_stop) send
+// the same frame, with the same id, once more after the wait; a wait that
+// would outlast ctx returns the refusal at once. «caller» returns it.
+func (c *Client) request(ctx context.Context, id string, b []byte) (frame, error) {
 	for try := 0; ; try++ {
-		acc, err := c.sendOnce(ctx, m.ID, b)
+		f, err := c.sendOnce(ctx, id, b)
 		var e *Error
-		if try == 0 && errors.As(err, &e) && frameMove(e.Code) == MoveWait {
-			if err := sleep(ctx, c.done, e.RetryAfter); err != nil {
-				return Accepted{}, err
-			}
-			continue
+		if try > 0 || !errors.As(err, &e) {
+			return f, err
 		}
-		return acc, err
+		var wait time.Duration
+		switch frameMove(e.Code) {
+		case MoveWait:
+			wait = e.RetryAfter
+		case MoveWaitUntil:
+			if e.Until.IsZero() {
+				return f, err
+			}
+			wait = time.Until(e.Until)
+		default:
+			return f, err
+		}
+		if dl, ok := ctx.Deadline(); ok && time.Now().Add(wait).After(dl) {
+			return f, err
+		}
+		if err := sleep(ctx, c.done, max(wait, 0)); err != nil {
+			return frame{}, err
+		}
 	}
 }
 
-func (c *Client) sendOnce(ctx context.Context, id string, b []byte) (Accepted, error) {
+func (c *Client) sendOnce(ctx context.Context, id string, b []byte) (frame, error) {
 	p := &pending{frame: b, res: make(chan error, 1)}
 	c.mu.Lock()
 	if c.stopErr != nil {
 		err := c.stopErr
 		c.mu.Unlock()
-		return Accepted{}, err
+		return frame{}, err
 	}
 	c.pending[id] = p
 	conn, live := c.conn, c.live
@@ -169,11 +210,11 @@ func (c *Client) sendOnce(ctx context.Context, id string, b []byte) (Accepted, e
 	}
 	select {
 	case err := <-p.res:
-		return p.acc, err
+		return p.ans, err
 	case <-ctx.Done():
-		return Accepted{}, ctx.Err()
+		return frame{}, ctx.Err()
 	case <-c.done:
-		return Accepted{}, c.stopped()
+		return frame{}, c.stopped()
 	}
 }
 
@@ -313,6 +354,7 @@ func (c *Client) connect(ctx context.Context) (*websocket.Conn, Welcome, error) 
 	}
 	w := Welcome{V: f.V, Project: f.Project}
 	json.Unmarshal(f.To, &w.To)
+	json.Unmarshal(f.Projects, &w.Projects)
 	if f.Limits != nil {
 		w.Limits = *f.Limits
 	}
@@ -437,11 +479,17 @@ func (c *Client) read(conn *websocket.Conn) (code string, closeCode int) {
 		case "ping":
 			conn.Write(c.ctx, websocket.MessageText, []byte(`{"type":"pong"}`))
 		case "accepted":
-			c.answer(f.Re, Accepted{ID: f.Re, Conversation: f.Conversation}, nil)
+			c.answer(f.Re, f, nil)
+		case "state":
+			if f.Re != "" {
+				c.answer(f.Re, f, nil)
+				continue
+			}
+			c.stateEvent(f)
 		case "error":
 			e := f.err()
 			if f.Re != "" {
-				c.answer(f.Re, Accepted{}, e)
+				c.answer(f.Re, frame{}, e)
 				continue
 			}
 			code = f.Code
@@ -457,15 +505,15 @@ func (c *Client) read(conn *websocket.Conn) (code string, closeCode int) {
 	}
 }
 
-// answer ends a waiting Send.
-func (c *Client) answer(id string, acc Accepted, err error) {
+// answer ends a waiting request.
+func (c *Client) answer(id string, f frame, err error) {
 	c.mu.Lock()
 	p := c.pending[id]
 	c.mu.Unlock()
 	if p == nil {
 		return
 	}
-	p.acc = acc
+	p.ans = f
 	select {
 	case p.res <- err:
 	default:

@@ -18,7 +18,8 @@ _, err = c.Send(ctx, h2a.Message{Conversation: acc.Conversation, Text: "And the 
   address of the pass), `h2a_conversation_unknown`, `h2a_no_holder` (nobody
   on the post now), `h2a_daily` (the day's messages are used; `Until` says
   when), `h2a_too_big`. `h2a_rate` is waited out (`RetryAfter`) and the
-  frame sent once more; a second one is returned.
+  frame sent once more; a second one is returned, and so is one whose
+  wait would outlast `ctx`.
 - The SDK does not send a text over the welcome's `Limits.TextBytes`: that
   is `h2a_too_big` here, without a frame.
 - A conversation lives 30 days after its last message; who answers in it,

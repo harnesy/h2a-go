@@ -10,7 +10,11 @@ against); the SDK decides nothing of its own:
 | `reconnect` (the network, `1006`, `h2a_ping` 4408, a frame over the limit `1009`) | waits 1 s, doubled each failed try up to 60 s, ±20 % at random (a welcome resets it), then signs in again with `resume_after`; what `Send` was waiting for is sent again with the same `ID` |
 | `wait retry_after` (`h2a_rate`) | on a hello: waits `retry_after` (10 min without it), then signs in; on a frame: `Send` waits and sends the same frame once more |
 | `stop` (`h2a_auth` 4401, `h2a_off` 4403, `h2a_version` / `h2a_hello_required` / `h2a_bad_frame` on a hello 4400, `h2a_replaced` 4409) | stops: no reconnect; `Run` and `Send` return the error (`h2a.ErrReplaced` for `h2a_replaced`: another copy of the service signed in with the same pass) |
-| `caller` (a refused frame: the connection stays) | the error goes to the `Send` of that frame |
+| `wait until` (`h2a_soft_stop` on a `wake`) | waits until `Until`, then sends the same frame once more |
+| `caller` (a refused frame: the connection stays) | the error goes to the `Send`, `State`, `Wake`, `Sleep` or `CreateItem` of that frame |
+
+A wait on a frame that would outlast its `ctx` is not waited: the method
+returns the `*h2a.Error` at once, with `RetryAfter` or `Until`.
 
 A `stop` needs a person: a new token, the pass turned on, harnsy Max back,
 or one copy of the service stopped.
@@ -18,7 +22,8 @@ or one copy of the service stopped.
 Every error of the node is `*h2a.Error` with the fields of the contract:
 `Code`, `Text` (harnsy's words), `Field`, `RetryAfter`, `Until`, and
 `Close` (the WebSocket close code that came with it). The codes are
-constants: `h2a.CodeAuth`, `h2a.CodeOff`, `h2a.CodeRate`, … An unknown code
+constants: `h2a.CodeAuth`, `h2a.CodeOff`, `h2a.CodeRate`, `h2a.CodeForbidden`,
+`h2a.CodeNoWake`, `h2a.CodeNotYours`, `h2a.CodeSoftStop`, … An unknown code
 is an `*h2a.Error` too.
 
 ## Limits
