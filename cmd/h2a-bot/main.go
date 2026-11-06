@@ -45,12 +45,24 @@ func main() {
 	flag.Parse()
 	task := strings.Join(flag.Args(), " ")
 
+	// Ask only what this run uses: a plain task stays text alone.
+	can := []string{"text"}
+	if *state {
+		can = append(can, "state")
+	}
+	if *wake != "" || *sleepTo != "" {
+		can = append(can, "wake")
+	}
+	if *item != "" {
+		can = append(can, "item")
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	c, err := h2a.Dial(ctx, h2a.Config{
 		URL:    os.Getenv("H2A_URL"),
 		Token:  os.Getenv("H2A_TOKEN"),
-		Can:    []string{"text", "state", "wake", "item"},
+		Can:    can,
 		Cursor: h2a.FileCursor(*seqFile),
 		Logf:   log.Printf,
 	})
