@@ -361,3 +361,48 @@ func TestClose(t *testing.T) {
 		t.Fatalf("send after close: %v", err)
 	}
 }
+
+// Review n2: the URL is wss:// (ws:// only to this machine), with no user,
+// password, query or fragment: the token goes in the hello alone.
+func TestDialRefusesAnUnsafeURL(t *testing.T) {
+	for _, u := range []string{
+		"ws://example.com/h2a/v1",
+		"http://127.0.0.1/h2a/v1",
+		"wss://user:pass@example.com/h2a/v1",
+		"wss://example.com/h2a/v1?token=h2a_x",
+		"wss://example.com/h2a/v1#x",
+	} {
+		if _, err := Dial(context.Background(), Config{URL: u, Token: goodToken}); err == nil || strings.Contains(err.Error(), goodToken) {
+			t.Errorf("%s: %v", u, err)
+		}
+	}
+	for _, u := range []string{"wss://example.com/h2a/v1", "ws://127.0.0.1:1/h2a/v1", "ws://localhost:1/h2a/v1", "ws://[::1]:1/h2a/v1"} {
+		if err := checkURL(u); err != nil {
+			t.Errorf("%s refused: %v", u, err)
+		}
+	}
+}
+
+// Review n5: one Run per client at a time.
+func TestRunIsOneAtATime(t *testing.T) {
+	n := newFakeNode(t)
+	c, err := Dial(context.Background(), n.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() { first <- c.Run(ctx, func(context.Context, Reply) error { return nil }) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.running.Load() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if err := c.Run(context.Background(), func(context.Context, Reply) error { return nil }); !errors.Is(err, ErrRunning) {
+		t.Fatalf("a second Run: %v", err)
+	}
+	cancel()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the first Run: %v", err)
+	}
+}

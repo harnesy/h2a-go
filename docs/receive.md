@@ -20,3 +20,8 @@ err := c.Run(ctx, func(ctx context.Context, m h2a.Reply) error {
   `*h2a.Error` with `h2a_auth` / `h2a_off`, or `h2a.ErrReplaced`. A refusal
   of the connection without a frame's ID (`h2a_frame`) is returned too.
 - The node's `ping` is answered with `pong` by the SDK, without a handler.
+- One `Run` per client at a time; a second call returns `h2a.ErrRunning`.
+- Keep the handler short. While it runs, the SDK buffers up to 64 answers;
+  past that it stops reading, and a long stall loses the connection (the SDK
+  reconnects and nothing is lost, but it takes time). Long work: save the
+  answer where your program keeps it, return `nil`, and do the work after.

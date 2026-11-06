@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	h2a "github.com/harnesy/h2a-go"
 )
@@ -63,7 +64,7 @@ func main() {
 	}
 
 	err = c.Run(ctx, func(ctx context.Context, m h2a.Reply) error {
-		fmt.Printf("[%s · %s] %s\n", m.From.Role, m.From.Project, m.Text)
+		fmt.Printf("[%s · %s] %s\n", clean(m.From.Role), clean(m.From.Project), clean(m.Text))
 		return nil
 	})
 	switch {
@@ -90,4 +91,18 @@ func home() string {
 		return h
 	}
 	return "."
+}
+
+// clean drops control characters (escape sequences, bidi marks) from an
+// agent's text before the terminal shows it; line breaks and tabs stay.
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
 }

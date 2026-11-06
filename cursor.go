@@ -55,9 +55,23 @@ func (f fileCursor) Save(seq int64) error {
 		os.Remove(tmp.Name())
 		return err
 	}
+	// On disk before the rename: after a power loss the file holds the old
+	// seq or the new one, never nothing.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmp.Name())
 		return err
 	}
-	return os.Rename(tmp.Name(), f.path)
+	if err := os.Rename(tmp.Name(), f.path); err != nil {
+		return err
+	}
+	if d, err := os.Open(filepath.Dir(f.path)); err == nil {
+		d.Sync() // the rename itself; a system without a directory sync skips it
+		d.Close()
+	}
+	return nil
 }

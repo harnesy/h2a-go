@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -53,6 +56,7 @@ type Client struct {
 	replies chan Reply
 	errs    chan *Error
 	redo    *Reply // a reply whose handler failed: the next Run gets it first
+	running atomic.Bool
 }
 
 type pending struct {
@@ -75,6 +79,9 @@ const helloTimeout = 15 * time.Second
 func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.URL == "" || cfg.Token == "" {
 		return nil, errors.New("h2a: Config needs URL and Token")
+	}
+	if err := checkURL(cfg.URL); err != nil {
+		return nil, err
 	}
 	if cfg.Can == nil {
 		cfg.Can = []string{"text"}
@@ -170,13 +177,45 @@ func (c *Client) sendOnce(ctx context.Context, id string, b []byte) (Accepted, e
 	}
 }
 
+// ErrRunning: Run was called while another Run of the client runs.
+var ErrRunning = errors.New("h2a: Run is already running on this client")
+
+// checkURL takes only wss://host[:port]/path (ws:// only to this machine,
+// for tests): no user or password and no query in it — the pass goes in the
+// hello alone, and a URL lands in logs.
+func checkURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("h2a: bad URL: %w", err)
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("h2a: the URL takes no user, password, query or fragment: the token goes in the hello")
+	}
+	switch u.Scheme {
+	case "wss":
+		return nil
+	case "ws":
+		if ip := net.ParseIP(u.Hostname()); u.Hostname() == "localhost" || (ip != nil && ip.IsLoopback()) {
+			return nil
+		}
+	}
+	return errors.New("h2a: the URL must be wss:// (ws:// only to this machine)")
+}
+
 // Run hands each agent's reply to h, in seq order, one at a time. h
 // returning nil acknowledges the reply (ack) and saves its seq in the
 // Cursor; an error is returned by Run, and the next Run gets that reply
 // again. A refusal of the connection without a frame's ID comes back as
 // *Error. Run returns when ctx ends, or the client stops for good (the
-// contract's «stop»: *Error with CodeAuth or CodeOff, ErrReplaced).
+// contract's «stop»: *Error with CodeAuth or CodeOff, ErrReplaced). One Run
+// at a time per client (a second gets ErrRunning). Keep h short: while it
+// runs, no new reply is read past the buffer, and a long stall loses the
+// connection (the SDK reconnects and nothing is lost, but it costs time).
 func (c *Client) Run(ctx context.Context, h func(ctx context.Context, m Reply) error) error {
+	if !c.running.CompareAndSwap(false, true) {
+		return ErrRunning
+	}
+	defer c.running.Store(false)
 	for {
 		var m Reply
 		if c.redo != nil {
