@@ -1,0 +1,115 @@
+from harnsy e5dea67d5, contract "1"
+{
+  "contract": "1",
+  "codes": [
+    {
+      "code": "h2a_version",
+      "on": "hello",
+      "close": 4400,
+      "client": "stop"
+    },
+    {
+      "code": "h2a_hello_required",
+      "on": "hello",
+      "close": 4400,
+      "client": "stop"
+    },
+    {
+      "code": "h2a_auth",
+      "on": "hello",
+      "close": 4401,
+      "client": "stop"
+    },
+    {
+      "code": "h2a_off",
+      "on": "hello",
+      "close": 4403,
+      "client": "stop"
+    },
+    {
+      "code": "h2a_replaced",
+      "on": "close",
+      "close": 4409,
+      "client": "stop"
+    },
+    {
+      "code": "h2a_ping",
+      "on": "close",
+      "close": 4408,
+      "client": "reconnect"
+    },
+    {
+      "code": "h2a_rate",
+      "on": "hello",
+      "close": 4429,
+      "client": "wait retry_after"
+    },
+    {
+      "code": "h2a_bad_frame",
+      "on": "hello",
+      "close": 4400,
+      "client": "stop"
+    },
+    {
+      "code": "h2a_frame",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_bad_frame",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_part",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_too_big",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_address",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_conversation_unknown",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_no_holder",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "code": "h2a_rate",
+      "on": "frame",
+      "client": "wait retry_after"
+    },
+    {
+      "code": "h2a_daily",
+      "on": "frame",
+      "client": "caller"
+    },
+    {
+      "on": "close",
+      "close": 1006,
+      "client": "reconnect"
+    },
+    {
+      "on": "close",
+      "close": 1009,
+      "client": "reconnect"
+    }
+  ],
+  "reconnect": {
+    "first_seconds": 1,
+    "max_seconds": 60,
+    "factor": 2,
+    "jitter": 0.2
+  }
+}

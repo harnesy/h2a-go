@@ -1,0 +1,184 @@
+from harnsy e5dea67d5, contract "1"
+[
+  {
+    "dir": "service",
+    "frame": {
+      "type": "hello",
+      "v": "1",
+      "token": "h2a_TOKEN",
+      "can": [
+        "text"
+      ]
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "welcome",
+      "v": "1",
+      "project": "App",
+      "to": [
+        {
+          "address": "lead",
+          "name": "Project lead"
+        },
+        {
+          "address": "role:11",
+          "name": "Editor"
+        }
+      ],
+      "limits": {
+        "frames_per_minute": 60,
+        "messages_per_day": 100,
+        "text_bytes": 16384,
+        "frame_bytes": 262144,
+        "queue": 500,
+        "queue_hours": 24,
+        "ping_seconds": 20,
+        "idle_seconds": 60
+      }
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "message",
+      "id": "m-1",
+      "to": "role:11",
+      "parts": [
+        {
+          "text": "task"
+        }
+      ]
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "accepted",
+      "re": "m-1",
+      "conversation": "C"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "message",
+      "seq": 1,
+      "conversation": "C",
+      "from": {
+        "project": "App",
+        "role": "Editor"
+      },
+      "parts": [
+        {
+          "text": "done"
+        }
+      ],
+      "at": "T"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "ping"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "pong"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "bogus"
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "error",
+      "code": "h2a_frame",
+      "text": "a frame is one JSON object of a known type"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": "not json"
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "error",
+      "code": "h2a_frame",
+      "text": "a frame is one JSON object of a known type"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "message",
+      "id": "m-2",
+      "to": "lead",
+      "parts": [
+        {
+          "data": {}
+        }
+      ]
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "error",
+      "re": "m-2",
+      "code": "h2a_part",
+      "text": "a part of this kind is not known in version 1: send text"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "message",
+      "id": "m-3",
+      "to": "role:99",
+      "parts": [
+        {
+          "text": "x"
+        }
+      ]
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "error",
+      "re": "m-3",
+      "code": "h2a_address",
+      "text": "to is not an address of the welcome"
+    }
+  },
+  {
+    "dir": "service",
+    "frame": {
+      "type": "message",
+      "id": "m-1",
+      "to": "role:11",
+      "parts": [
+        {
+          "text": "task"
+        }
+      ]
+    }
+  },
+  {
+    "dir": "node",
+    "frame": {
+      "type": "accepted",
+      "re": "m-1",
+      "conversation": "C"
+    }
+  }
+]
