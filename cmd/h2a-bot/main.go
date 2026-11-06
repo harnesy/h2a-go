@@ -71,6 +71,10 @@ func main() {
 	case errors.Is(err, context.Canceled):
 	case errors.Is(err, h2a.ErrReplaced):
 		log.Fatal("another copy of this service signed in with the same pass")
+	case isCode(err, h2a.CodeAuth):
+		log.Fatal("the pass is not valid any more (revoked or wrong): make a new one on the dashboard")
+	case isCode(err, h2a.CodeOff):
+		log.Fatal("access from outside or this pass is turned off on the node")
 	case err != nil:
 		log.Fatal(err)
 	}
@@ -105,4 +109,10 @@ func clean(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// isCode says err is the node's refusal with that code.
+func isCode(err error, code string) bool {
+	var e *h2a.Error
+	return errors.As(err, &e) && e.Code == code
 }
