@@ -6,7 +6,9 @@ the agents' answers in the same conversation, through disconnects and
 restarts. With the rights for it, it also sees the posts' state, wakes and
 puts to sleep a post's holder, and raises items.
 
-SDK v1 talks h2a v1 (harnsy ≥ 0.11). Checked against harnsy at the commit
+The SDK talks contract h2a v1: messages and answers with harnsy 0.11 and
+later; state, wake, sleep and items need a harnsy with them (its release
+notes say so). Checked against harnsy at the commit
 named in [`testdata/codes.json`](testdata/codes.json) (its first line).
 
 ## Install
@@ -104,12 +106,12 @@ close, and decides nothing the node decides.
 
 ## Versions
 
-The major version of the SDK is the contract's: `v1.x.y` speaks contract
-`"1"`; fields the contract adds within `1` come in minor versions, and
-fields the SDK does not know are skipped. `v1.1.0` (planned) adds control:
-`State`, `OnState`, `Wake`, `Sleep`, `CreateItem`, `Welcome.Projects`; the
-contract stays `"1"`. Contract `"2"` will be
-`github.com/harnesy/h2a-go/v2`.
+Before 1.0 the SDK's API may still change between minor versions; every
+`v0.x.y` speaks contract `"1"`, and fields the contract adds within `1`
+come in minor versions (fields the SDK does not know are skipped).
+`v0.1` sends and receives messages; `v0.2` adds control: `State`,
+`OnState`, `Wake`, `Sleep`, `CreateItem`, `Welcome.Projects`. Contract
+`"2"` will be a new major version of the module.
 
 ## Tests
 
