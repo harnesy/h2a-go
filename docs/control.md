@@ -40,7 +40,9 @@ c.OnState(func(s h2a.State) { /* only the posts that changed */ })
   agent's name, a session or a node.
 - `OnState` gets the node's events: a post whose state or counts changed,
   at most once per 5 s a post. It runs on one goroutine of the client, one
-  event at a time: keep it short. The first look after the sign-in is not
+  event at a time. Events that come while it runs are coalesced: the next
+  call has each changed post once, in its newest state (an older state of a
+  post is dropped, the newest never). The first look after the sign-in is not
   an event: call `State`.
 
 ## Wake and sleep
@@ -54,8 +56,8 @@ err = c.Sleep(ctx, "lead", "") // "" or h2a.SleepAfterStep: after its turn
   the person or a lead chose, «do not wake», a team put to sleep whole, a
   holder that is off: `h2a_no_wake`. A holder awake already: `nil`.
 - `Sleep` puts to sleep only the holder this pass woke last; else
-  `h2a_not_yours`. The holder ends its turn first (`h2a.SleepNow` is taken
-  the same way).
+  `h2a_not_yours`. The holder ends its turn first: the node takes the mode
+  `now` as `after_step` too, so the SDK has only `h2a.SleepAfterStep`.
 - The subscription at its soft stop: `h2a_soft_stop` with `Until`. The SDK
   waits until then and sends the frame once more; a `ctx` that ends before
   `Until` gets the error at once.

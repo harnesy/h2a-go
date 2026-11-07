@@ -56,7 +56,7 @@ type Client struct {
 	delivered int64 // the highest seq put on replies
 
 	replies chan Reply
-	states  chan State // the node's state events, for the OnState handler
+	states  stateQueue // the node's state events, for the OnState handler
 	onState func(State)
 	errs    chan *Error
 	redo    *Reply // a reply whose handler failed: the next Run gets it first
@@ -95,7 +95,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 		cfg.Logf = func(string, ...any) {}
 	}
 	c := &Client{cfg: cfg, done: make(chan struct{}), live: make(chan struct{}),
-		pending: map[string]*pending{}, replies: make(chan Reply, 64), states: make(chan State, 16), errs: make(chan *Error, 16)}
+		pending: map[string]*pending{}, replies: make(chan Reply, 64), states: stateQueue{ready: make(chan struct{}, 1)}, errs: make(chan *Error, 16)}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	conn, w, err := c.connect(ctx)
 	if err != nil {

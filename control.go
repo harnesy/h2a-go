@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"sync"
 )
 
 // The frames of control (contract §2): the posts' state, wake and sleep,
@@ -69,12 +71,9 @@ type ItemRef struct {
 // it may still be refused by the node with h2a_too_big.
 const ItemTextBytes = 8000
 
-// Sleep modes: after the holder's turn (the default), or now — which the
-// node takes as after its turn too.
-const (
-	SleepAfterStep = "after_step"
-	SleepNow       = "now"
-)
+// SleepAfterStep is the sleep mode: after the holder's turn, the node's
+// default and the only one it keeps (it takes "now" as after_step too).
+const SleepAfterStep = "after_step"
 
 type stateFrame struct {
 	Type    string `json:"type"`
@@ -121,8 +120,10 @@ func stateOf(f frame) (State, error) {
 
 // OnState sets h to get the node's state events: the posts whose state or
 // counts changed (at most once per 5 s a post), of projects where the pass
-// has read. h runs on one goroutine of the client, one event at a time:
-// keep it short. nil: events are dropped. Needs "state" in Config.Can.
+// has read. h runs on one goroutine of the client, one event at a time.
+// The events that come while h runs are coalesced: its next call has each
+// post that changed once, in its newest state; the client never waits on h
+// to read the node. nil: events are dropped. Needs "state" in Config.Can.
 func (c *Client) OnState(h func(State)) {
 	c.mu.Lock()
 	c.onState = h
@@ -166,16 +167,58 @@ func (c *Client) CreateItem(ctx context.Context, to, title, text string) (ItemRe
 	return ItemRef{ID: f.Re, Item: f.Item}, nil
 }
 
-// stateEvent queues a state event for the handler.
+// stateQueue holds the state events the OnState handler has not got yet,
+// coalesced: one entry per post, its newest state. The read loop never
+// waits on it, and a slow handler never misses the newest state of a post.
+type stateQueue struct {
+	mu       sync.Mutex
+	projects []ProjectState
+	ready    chan struct{} // a value while projects is not empty
+}
+
+// put merges s into the queue: a post already queued takes its new state
+// in place.
+func (q *stateQueue) put(s State) {
+	q.mu.Lock()
+	for _, p := range s.Projects {
+		i := slices.IndexFunc(q.projects, func(x ProjectState) bool { return x.Project == p.Project })
+		if i < 0 {
+			q.projects = append(q.projects, ProjectState{Project: p.Project})
+			i = len(q.projects) - 1
+		}
+		posts := q.projects[i].Posts
+		for _, post := range p.Posts {
+			if j := slices.IndexFunc(posts, func(x Post) bool { return x.Address == post.Address }); j >= 0 {
+				posts[j] = post
+			} else {
+				posts = append(posts, post)
+			}
+		}
+		q.projects[i].Posts = posts
+	}
+	q.mu.Unlock()
+	select {
+	case q.ready <- struct{}{}:
+	default:
+	}
+}
+
+// take empties the queue: one State with every post queued.
+func (q *stateQueue) take() State {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	s := State{Projects: q.projects}
+	q.projects = nil
+	return s
+}
+
+// stateEvent queues a state event for the handler, without waiting.
 func (c *Client) stateEvent(f frame) {
 	s, err := stateOf(f)
 	if err != nil {
 		return
 	}
-	select {
-	case c.states <- s:
-	case <-c.ctx.Done():
-	}
+	c.states.put(s)
 }
 
 // dispatchStates hands the events to the OnState handler until the client
@@ -185,7 +228,11 @@ func (c *Client) dispatchStates() {
 		select {
 		case <-c.done:
 			return
-		case s := <-c.states:
+		case <-c.states.ready:
+			s := c.states.take()
+			if len(s.Projects) == 0 {
+				continue
+			}
 			c.mu.Lock()
 			h := c.onState
 			c.mu.Unlock()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -60,12 +61,12 @@ func TestControlFrames(t *testing.T) {
 	if err := c.Sleep(ctx, "lead", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Sleep(ctx, "lead", SleepNow); err != nil {
+	if err := c.Sleep(ctx, "lead", SleepAfterStep); err != nil {
 		t.Fatal(err)
 	}
 	f := n.sentControls()
 	if len(f) != 5 || f[0].Project != "" || f[1].Project != "App" || f[2].Type != "wake" || f[2].To != "lead" ||
-		f[3].Type != "sleep" || f[3].Mode != "" || f[4].Mode != SleepNow {
+		f[3].Type != "sleep" || f[3].Mode != "" || f[4].Mode != SleepAfterStep {
 		t.Fatalf("frames %+v", f)
 	}
 	for _, x := range f {
@@ -99,6 +100,55 @@ func TestOnStateGetsAnEvent(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("no event")
+	}
+}
+
+// A handler that blocks while many events come never stalls the read loop:
+// a ping gets its pong and a wake its accepted meanwhile, and the handler's
+// next call has the newest state of each post.
+func TestSlowOnStateNeverBlocksTheReadLoop(t *testing.T) {
+	n := newFakeNode(t)
+	c := dial(t, n, controlConfig(n))
+	release := make(chan struct{})
+	got := make(chan State, 4)
+	var calls atomic.Int32
+	c.OnState(func(s State) {
+		if calls.Add(1) == 1 {
+			<-release
+		}
+		got <- s
+	})
+	post := func(addr string, working int) []ProjectState {
+		return []ProjectState{{Project: "App", Posts: []Post{{Address: addr, State: PostUp, Counts: Counts{Seats: 9, Working: working}}}}}
+	}
+	n.event(post("lead", 0))
+	waitFor(t, "the handler's first call", func() bool { return calls.Load() == 1 })
+	for i := 1; i <= 100; i++ { // far over any queue
+		n.event(post("lead", i))
+		n.event(post("role:11", i))
+	}
+	n.mu.Lock()
+	live := n.live
+	n.mu.Unlock()
+	n.send(live, map[string]string{"type": "ping"})
+	waitFor(t, "a pong", func() bool {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		return slices.ContainsFunc(n.frames, func(f frame) bool { return f.Type == "pong" })
+	})
+	if err := c.Wake(ctx5(t), "lead"); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	<-got // the first event
+	want := []ProjectState{{Project: "App", Posts: append(post("lead", 100)[0].Posts, post("role:11", 100)[0].Posts...)}}
+	select {
+	case s := <-got:
+		if !reflect.DeepEqual(s.Projects, want) {
+			t.Fatalf("after the block %+v, want %+v", s.Projects, want)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event after the block")
 	}
 }
 
